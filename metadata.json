@@ -1,0 +1,6 @@
+{
+  "name": "StockMaster",
+  "description": "A single-owner inventory and pricing system with barcode scanning, backed by real-time cloud sync.",
+  "requestFramePermissions": ["camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

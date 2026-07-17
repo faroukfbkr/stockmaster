@@ -1,0 +1,77 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Global safety net - default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+    
+    // Core helpers
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+    
+    // Validation Blueprints
+    function isValidProduct(product) {
+      return product.keys().hasAll(['barcode', 'name', 'costPrice', 'sellingPrice', 'quantity', 'unit', 'userId', 'createdAt', 'updatedAt'])
+          && product.keys().size() <= 11
+          && product.barcode is string && product.barcode.size() >= 3 && product.barcode.size() <= 100
+          && product.name is string && product.name.size() >= 1 && product.name.size() <= 200
+          && product.costPrice is number && product.costPrice >= 0
+          && product.sellingPrice is number && product.sellingPrice >= 0
+          && product.quantity is number
+          && product.unit is string && product.unit.size() >= 1 && product.unit.size() <= 50
+          && product.userId == request.auth.uid
+          && (!product.keys().hasAny(['category']) || (product.category is string && product.category.size() <= 100))
+          && (!product.keys().hasAny(['photoUrl']) || (product.photoUrl is string && product.photoUrl.size() <= 1000));
+    }
+    
+    function isValidStockMovement(mov) {
+      return mov.keys().hasAll(['productId', 'type', 'quantityChange', 'priceAtTime', 'userId', 'timestamp'])
+          && mov.keys().size() == 6
+          && mov.productId is string && isValidId(mov.productId)
+          && mov.type is string && (mov.type == 'restock' || mov.type == 'sale' || mov.type == 'adjustment')
+          && mov.quantityChange is number
+          && mov.priceAtTime is number && mov.priceAtTime >= 0
+          && mov.userId == request.auth.uid;
+    }
+    
+    // Products Collection
+    match /products/{productId} {
+      allow get: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
+      
+      allow create: if isSignedIn() 
+                    && isValidId(productId) 
+                    && isValidProduct(request.resource.data);
+                    
+      allow update: if isSignedIn()
+                    && isValidId(productId)
+                    && resource.data.userId == request.auth.uid
+                    && isValidProduct(request.resource.data)
+                    && request.resource.data.userId == resource.data.userId
+                    && request.resource.data.barcode == resource.data.barcode
+                    && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name', 'costPrice', 'sellingPrice', 'quantity', 'unit', 'updatedAt', 'category', 'photoUrl']);
+                    
+      allow delete: if isSignedIn() 
+                    && resource.data.userId == request.auth.uid;
+    }
+    
+    // Stock Movements Collection (Immutable Audit Trail)
+    match /stockMovements/{movementId} {
+      allow get: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
+      
+      allow create: if isSignedIn() 
+                    && isValidId(movementId) 
+                    && isValidStockMovement(request.resource.data);
+                    
+      allow update, delete: if false;
+    }
+  }
+}
