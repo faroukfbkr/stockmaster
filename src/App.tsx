@@ -51,6 +51,7 @@ export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [mockUser, setMockUser] = useState<{ email: string; displayName: string; uid: string } | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
+  const [authError, setAuthError] = useState<string | null>(null);
 
   // Core Data State
   const [products, setProducts] = useState<Product[]>([]);
@@ -142,13 +143,21 @@ export default function App() {
 
   // Real Google Sign-In
   const handleGoogleSignIn = async () => {
+    setAuthError(null);
     if (isFirebaseConfigured && auth && googleProvider) {
       try {
         setAuthLoading(true);
         await signInWithPopup(auth, googleProvider);
-      } catch (err) {
+      } catch (err: any) {
         console.error("Google login failed:", err);
-        alert("Google Authentication failed. Please check your config.");
+        const code = err?.code || '';
+        const msg = err?.message || 'Unknown error occurred.';
+        
+        if (code === 'auth/unauthorized-domain') {
+          setAuthError(`unauthorized-domain:${window.location.hostname}`);
+        } else {
+          setAuthError(`${code ? code + ': ' : ''}${msg}`);
+        }
       } finally {
         setAuthLoading(false);
       }
@@ -590,8 +599,38 @@ export default function App() {
             <span>Sign In with Google</span>
           </button>
 
+          {/* Auth Error Diagnosis */}
+          {authError && (
+            <div className="mt-6 p-4 bg-red-50 rounded-2xl border border-red-200 flex flex-col gap-2 text-xs text-red-800">
+              <div className="flex gap-2">
+                <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0" />
+                <div>
+                  <p className="font-semibold">Authentication Error</p>
+                  {authError.startsWith('unauthorized-domain:') ? (
+                    <div className="mt-1 space-y-2">
+                      <p className="opacity-90 leading-relaxed">
+                        This domain (<code className="bg-red-100 px-1 rounded font-mono text-[11px] font-bold">{authError.split(':')[1]}</code>) is not authorized in your Firebase Project.
+                      </p>
+                      <div className="bg-white/60 p-2.5 rounded-xl border border-red-100/60 text-slate-700 leading-normal">
+                        <p className="font-semibold text-slate-900 mb-1">To fix this in your Firebase Console:</p>
+                        <ol className="list-decimal pl-4 space-y-1">
+                          <li>Open your Firebase project dashboard</li>
+                          <li>Go to <strong>Authentication</strong> &rarr; <strong>Settings</strong> tab</li>
+                          <li>Click on <strong>Authorized domains</strong></li>
+                          <li>Click <strong>Add domain</strong> and enter: <code className="bg-slate-100 px-1 rounded font-mono text-[11px] font-bold text-slate-900">{authError.split(':')[1]}</code></li>
+                        </ol>
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="mt-1 opacity-90 leading-relaxed">{authError}</p>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Sync Status Sandbox Notice */}
-          {!isFirebaseConfigured && (
+          {!isFirebaseConfigured ? (
             <div className="mt-6 p-4 bg-amber-50 rounded-2xl border border-amber-200 flex gap-3 text-xs text-amber-800">
               <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0" />
               <div>
@@ -600,6 +639,23 @@ export default function App() {
                   Firebase keys are not configured in your Secrets menu. Click "Sign In with Google" to explore using local storage state!
                 </p>
               </div>
+            </div>
+          ) : (
+            <div className="mt-4 text-center">
+              <p className="text-slate-400 text-xs mb-2">Stuck or configuring? Skip login to enter immediately!</p>
+              <button
+                type="button"
+                onClick={() => {
+                  setMockUser({
+                    uid: 'sandbox_owner_farouk',
+                    email: 'faroukinfluance@gmail.com',
+                    displayName: 'Farouk (Sandbox)'
+                  });
+                }}
+                className="inline-flex items-center gap-1.5 text-blue-600 hover:text-blue-800 text-xs font-semibold underline decoration-2 underline-offset-4 cursor-pointer"
+              >
+                Continue in Local Sandbox Mode
+              </button>
             </div>
           )}
 
